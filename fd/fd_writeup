@@ -1,0 +1,65 @@
+Easy Way:
+
+/******************************
+fd@ubuntu:~$ ls -l
+total 16
+-r-sr-x--- 1 fd_pwn fd   7322 Jun 11  2014 fd
+-rw-r--r-- 1 root   root  418 Jun 11  2014 fd.c
+-r--r----- 1 fd_pwn root   50 Jun 11  2014 flag
+fd@ubuntu:~$ 
+********************************/
+We can see the flag but we do not have permisions to read it(https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/4/html/Step_by_Step_Guide/s1-navigating-ownership.html). Only owner of the file and users beloning to that group can access the flag.
+
+The Binary fd has 's' flag set(https://unix.stackexchange.com/questions/118853/what-does-the-s-attribute-in-file-permissions-mean). Which means anyone can run the binary and it will run with "sudo" privileges. That looks like a good window to start. 
+
+/******************************
+fd@ubuntu:~$ cat -n fd.c
+     1	#include <stdio.h>
+     2	#include <stdlib.h>
+     3	#include <string.h>
+     4	char buf[32];
+     5	int main(int argc, char* argv[], char* envp[]){
+     6		if(argc<2){
+     7			printf("pass argv[1] a number\n");
+     8			return 0;
+     9		}
+    10		int fd = atoi( argv[1] ) - 0x1234;
+    11		int len = 0;
+    12		len = read(fd, buf, 32);
+    13		if(!strcmp("LETMEWIN\n", buf)){
+    14			printf("good job :)\n");
+    15			system("/bin/cat flag");
+    16			exit(0);
+    17		}
+    18		printf("learn about Linux file IO\n");
+    19		return 0;
+    20	
+    21	}
+    22	
+fd@ubuntu:~$ 
+
+********************************/
+
+We can see the binary needs (at least) two arguments. First argument is the name of the binary.
+The second argument is subtracted by 0x1234.  
+
+/********************************
+gef➤  p/d 0x1234
+$1 = 4660
+*********************************/
+
+And then it uses the result as a file descriptor(https://en.wikipedia.org/wiki/File_descriptor) and reads from it.
+The result is then stored in buf and compared with string "LETMEWIN\n"
+If success
+then 
+	flag
+else
+	learn more(https://www.tldp.org/LDP/abs/html/io-redirection.html)
+fi
+
+Since we need to set buf to "LETMEWIN" for it to successfully pass the check we need to set the fd to 0
+fd 0 is stdin and this allows us to enter "LETMEWIN" and pwn the flag.
+
+
+
+
