@@ -1,0 +1,135 @@
+
+
+/**********************************
+col@ubuntu:~$ ls -l
+total 16
+-r-sr-x--- 1 col_pwn col     7341 Jun 11  2014 col
+-rw-r--r-- 1 root    root     555 Jun 12  2014 col.c
+-r--r----- 1 col_pwn col_pwn   52 Jun 11  2014 flag
+col@ubuntu:~$ 
+**********************************/
+Same issue as the previous problem we don't have direct read access. So, we must pwn it. 
+
+
+/***********************************
+(gdb) shell cat -n col.c
+     1	#include <stdio.h>
+     2	#include <string.h>
+     3	unsigned long hashcode = 0x21DD09EC;
+     4	unsigned long check_password(const char* p){
+     5		int* ip = (int*)p;
+     6		int i;
+     7		int res=0;
+     8		for(i=0; i<5; i++){
+     9			res += ip[i];
+    10		}
+    11		return res;
+    12	}
+    13	
+    14	int main(int argc, char* argv[]){
+    15		if(argc<2){
+    16			printf("usage : %s [passcode]\n", argv[0]);
+    17			return 0;
+    18		}
+    19		if(strlen(argv[1]) != 20){
+    20			printf("passcode length should be 20 bytes\n");
+    21			return 0;
+    22		}
+    23	
+    24		if(hashcode == check_password( argv[1] )){
+    25			system("/bin/cat flag");
+    26			return 0;
+    27		}
+    28		else
+    29			printf("wrong passcode.\n");
+    30		return 0;
+    31	}
+(gdb) 
+***********************************/
+Line 19 tells us it has to be 20 bytes and line 24 tells us it has to match the value returned by
+check_password()
+
+Check Password Explanation:
+The chracter array pointer(There is no concept of stirng in c) in casted into integer pointer and
+stored in ip. This changes how c interprets things. Because Character is 1 byte whereas integer is 4 bytes(Actuall depends on Architecture of compiler x64 takes 4 bytes x32 takes 2 bytes). So when we type case chracter pointer to integer pointer every read will be of 4 bytes which means a single memory location read of say \x61\x61 would be read as 24929 instead of 'a'. 
+So the loop at line 8 makes 5 reads, which is convenient because 5 reads X 4 bytes = 20 bytes space provided. The loop reads four bytes and adds it to a res varaible and finally passes it to the main function for comparion.
+
+if comparison at line 21 is success
+then
+	cat flag
+else
+	wrong passcode
+fi
+/***********************************
+(gdb) break *0x080484c6
+(gdb) set disassembly intel
+(gdb) disassemble check_password 
+Dump of assembler code for function check_password:
+   0x08048494 <+0>:	push   ebp
+   0x08048495 <+1>:	mov    ebp,esp
+   0x08048497 <+3>:	sub    esp,0x10
+   0x0804849a <+6>:	mov    eax,DWORD PTR [ebp+0x8]
+   0x0804849d <+9>:	mov    DWORD PTR [ebp-0x4],eax
+   0x080484a0 <+12>:	mov    DWORD PTR [ebp-0x8],0x0
+   0x080484a7 <+19>:	mov    DWORD PTR [ebp-0xc],0x0
+   0x080484ae <+26>:	jmp    0x80484c2 <check_password+46>
+   0x080484b0 <+28>:	mov    eax,DWORD PTR [ebp-0xc]
+   0x080484b3 <+31>:	shl    eax,0x2
+   0x080484b6 <+34>:	add    eax,DWORD PTR [ebp-0x4]
+   0x080484b9 <+37>:	mov    eax,DWORD PTR [eax]
+   0x080484bb <+39>:	add    DWORD PTR [ebp-0x8],eax
+   0x080484be <+42>:	add    DWORD PTR [ebp-0xc],0x1
+   0x080484c2 <+46>:	cmp    DWORD PTR [ebp-0xc],0x4
+=> 0x080484c6 <+50>:	jle    0x80484b0 <check_password+28>
+   0x080484c8 <+52>:	mov    eax,DWORD PTR [ebp-0x8]
+   0x080484cb <+55>:	leave  
+   0x080484cc <+56>:	ret    
+End of assembler dump.
+
+***********************************/
+
+We set a break point at 0x080484c6 to see the 4 bytes of the character array being added
+
+/***********************************
+
+(gdb) disassemble main
+Dump of assembler code for function main:
+   .
+   .
+   .
+   0x0804855f <+146>:	call   0x8048494 <check_password>
+   0x08048564 <+151>:	mov    edx,DWORD PTR ds:0x804a020
+=> 0x0804856a <+157>:	cmp    eax,edx
+   0x0804856c <+159>:	jne    0x8048581 <main+180>
+   0x0804856e <+161>:	mov    DWORD PTR [esp],0x80486bb
+   0x08048575 <+168>:	call   0x80483b0 <system@plt>
+***********************************/
+
+The final comaprsion between the hash and the re happens where the arrow above points. We can set a similar break point.
+
+/************************************
+Breakpoint 5, 0x0804856a in main ()
+(gdb) i r $eax
+eax            0x21dd09ec	568134124
+(gdb) i r $edx
+edx            0x21dd09ec	568134124
+************************************/
+
+
+Now it is just a matter of playing with the values to appropriately set it. Since we pass it as an argument we cannot use a chracter that is a space, tab or any sort of seperator because then the string argument will become two arguments and only a part of the whole stirng will be considered as argument 1.
+/***********************************
+(gdb) run $(python -c 'print "\xe8\x05\xd9\x1d"+"\x01"*4+"\x01"*4+"\x01"*4+"\x01"*4')
+Starting program: /home/col/col $(python -c 'print "\xe8\x05\xd9\x1d"+"\x01"*4+"\x01"*4+"\x01"*4+"\x01"*4')
+/bin/cat: flag: Permission denied
+[Inferior 1 (process 47878) exited normally]
+(gdb) 
+
+************************************/
+
+after a couple of tries. I get this. It means the /bin/cat flag was executed but the permission was denied. It is because gdb doesn't have the read permission to open the file and read it's contents. So we now run ./col with the payload we crafted using gdb
+
+/************************************
+col@ubuntu:~$ ./col $(python -c 'print "\xe8\x05\xd9\x1d"+"\x01"*4+"\x01"*4+"\x01"*4+"\x01"*4')
+daddy! I just managed to create a hash collision :)
+************************************/
+there you go kiddo
