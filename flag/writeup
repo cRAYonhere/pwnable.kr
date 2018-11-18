@@ -1,0 +1,168 @@
+/***********************************
+gef➤  break main
+No symbol table is loaded.  Use the "file" command.
+***********************************/
+
+/**********************************
+gef➤  entry-break
+[+] Breaking at entry-point: 0x44a4f0
+
+***********************************/
+https://gef.readthedocs.io/en/latest/commands/entry-break/#command-entry-break
+
+This allowed me to follow code execution but it was hard to understand code logic
+other than that it was copying QWORD of memory from one location to another
+
+/***********************************
+flag $ltrace ./flag
+Couldn't find .dynsym or .dynstr in "/proc/11196/exe"
+flag $I will malloc() and strcpy the flag there. take it.
+***********************************/
+
+/**********************************
+flag $strace ./flag
+execve("./flag", ["./flag"], 0x7ffddd3422a0 /* 61 vars */) = 0
+mmap(0x800000, 2959710, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, 0, 0) = 0x800000
+readlink("/proc/self/exe", "/home/amrut/Desktop/pwnable.tk/f"..., 4096) = 40
+mmap(0x400000, 2912256, PROT_NONE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x400000
+mmap(0x400000, 790878, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x400000
+mprotect(0x400000, 790878, PROT_READ|PROT_EXEC) = 0
+mmap(0x6c1000, 9968, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0xc1000) = 0x6c1000
+mprotect(0x6c1000, 9968, PROT_READ|PROT_WRITE) = 0
+mmap(0x6c4000, 8920, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x6c4000
+munmap(0x801000, 2955614)               = 0
+uname({sysname="Linux", nodename="amrut-user1", ...}) = 0
+brk(NULL)                               = 0xb68000
+brk(0xb691c0)                           = 0xb691c0
+arch_prctl(ARCH_SET_FS, 0xb68880)       = 0
+brk(0xb8a1c0)                           = 0xb8a1c0
+brk(0xb8b000)                           = 0xb8b000
+fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(136, 4), ...}) = 0
+mmap(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7fc19ed83000
+write(1, "I will malloc() and strcpy the f"..., 52I will malloc() and strcpy the flag there. take it.
+) = 52
+exit_group(0)                           = ?
++++ exited with 0 +++
+flag $
+**********************************/
+
+Going thorough these system calls is a good exercise but it was mostly unfruitful for me.
+
+/*********************************
+fflag $strings -10 flag | egrep -o "[A-Za-z0-9 ]{4,}"
+.
+.
+.
+PROT
+WRITE failed
+Info
+ This file is packed with the UPX executable packer http
+net 
+ UPX 3
+08 Copyright 
+ 1996
+2011 the UPX Team
+ All Rights Reserved
+proc
+self
+Ubuntu
+Linaro 4
+rela
+libc
+ojxS
+P8vQj
+call
+gmon
+start
+FRAME
+BEGINf
+pleted
+6036
+curi
+cntrSd
+85408
+afKjump
+PRETTY
+FUNCT0Na
+5wdP9H
+2adDdoJs
+NUMERIC
+tbltoCto
+mkpl
+GLOBAL
+Mx868uA8
+ WUH
+flag $
+
+*********************************/
+
+I resorted to my baser instincts and started looking for any string I could use. I suspected that since its a stripped obfusticated binary I might not find the flag but I might find some keywords. But I noticed this line sticking out like a sore thumb. "This file is packed with the UPX executable packer http"
+
+/**********************************
+.
+.
+.
+EXEC
+PROT
+WRITE failed
+Info
+ This file is packed with the UPX executable packer http
+net 
+ UPX 3
+08 Copyright 
+ 1996
+2011 the UPX Team
+ All Rights Reserved
+j2AZE
+proc
+self
+IuJH
+bQsA
+oXIJ
+e1lh
+.
+.
+.
+***********************************/
+
+The output has been cut. Its actually 1600 lines or so. There is no reason or logic to find this, It's just exploring I option after the other. If I hadn't hit this by luck I would have used a dictionary file to do a word by word search to see any matches.
+
+I was hoping it was some sort of password based comprssion or something. But UPX seems to be a simple binary compressor and decompressor. 
+/*************************************
+https://github.com/upx/upx/tree/v3.95
+upx-3.95-amd64_linux $./upx 
+                       Ultimate Packer for eXecutables
+                          Copyright (C) 1996 - 2018
+UPX 3.95        Markus Oberhumer, Laszlo Molnar & John Reiser   Aug 26th 2018
+
+Usage: upx [-123456789dlthVL] [-qvfk] [-o file] file..
+
+Commands:
+  -1     compress faster                   -9    compress better
+  -d     decompress                        -l    list compressed file
+  -t     test compressed file              -V    display version number
+  -h     give more help                    -L    display software license
+Options:
+  -q     be quiet                          -v    be verbose
+  -oFILE write output to 'FILE'
+  -f     force compression of suspicious files
+  -k     keep backup files
+file..   executables to (de)compress
+
+Type 'upx --help' for more detailed help.
+
+UPX comes with ABSOLUTELY NO WARRANTY; for details visit https://upx.github.io
+upx-3.95-amd64_linux $
+upx-3.95-amd64_linux $./upx -d ../flag 
+
+**************************************/
+
+This will give us what we need a binary we can deal with it. 
+
+Set a break point at main and step thorugh the instruction and you will find another UPX string being manipulated. Which is the flag.
+
+"UPX...? sounds like a delivery service :)"
+
+
+
+
